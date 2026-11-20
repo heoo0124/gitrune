@@ -1,0 +1,51 @@
+[package]
+name = "ide-host"
+description = "The IDE backend without a UI toolkit: projects per window, terminals, processes, and the JSON-RPC server for remote development"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+encoding_rs.workspace = true
+ide-core.workspace = true
+futures.workspace = true
+ide-text.workspace = true
+ide-vfs.workspace = true
+regex-syntax.workspace = true
+regex-lite = "0.1"
+ide-workspace.workspace = true
+blake3.workspace = true
+ide-vcs.workspace = true
+reqwest.workspace = true
+ignore.workspace = true
+base64.workspace = true
+getrandom = "0.3"
+globset.workspace = true
+ide-ssh.workspace = true
+semver = "1"
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+toml.workspace = true
+specta.workspace = true
+specta-typescript.workspace = true
+tokio = { workspace = true, features = ["io-std"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+parking_lot.workspace = true
+dunce.workspace = true
+dirs.workspace = true
+uuid.workspace = true
+tempfile.workspace = true
+zip.workspace = true
+quick-xml = "0.42"
+
+[dev-dependencies]
+ide-ssh = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "test-util"] }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", features = ["fs", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+

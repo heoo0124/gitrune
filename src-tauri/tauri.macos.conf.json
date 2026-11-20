@@ -1,0 +1,18 @@
+{
+  "bundle": {
+    "macOS": {
+      "files": {
+        "Resources/bin/gitrune": "./cli/gitrune"
+      }
+    },
+    "fileAssociations": [
+      {
+        "name": "Folder",
+        "ext": [],
+        "contentTypes": ["public.folder"],
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ]
+  }
+}

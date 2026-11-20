@@ -1,0 +1,217 @@
+use ide_core::NullSink;
+#[cfg(unix)]
+use ide_host::ops;
+use ide_host::{Host, HostConfig, trust::TrustStore};
+use std::path::Path;
+use std::sync::Arc;
+#[cfg(unix)]
+use std::time::{Duration, Instant};
+
+fn host(base: &Path, environment: bool) -> Arc<Host> {
+    Arc::new(Host::new(HostConfig {
+        config_dir: base.join("config"),
+        data_dir: base.join("data"),
+        local_data_dir: base.join("data"),
+        sink_for: Box::new(|_| Arc::new(NullSink)),
+        owner: |w| w,
+        runtime: tokio::runtime::Handle::current(),
+        project_environment: environment,
+    }))
+}
+
+#[test]
+fn persists_user_decisions_locations_revocation_and_one_time_migration() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config = tmp.path().join("config");
+    let data = tmp.path().join("data");
+    let a = tmp.path().join("projects/a");
+    let b = tmp.path().join("projects/b");
+    std::fs::create_dir_all(a.join(".gitrune")).unwrap();
+    std::fs::create_dir_all(b.join(".gitrune")).unwrap();
+    std::fs::write(a.join(".gitrune/project-trust.json"), r#"{"trusted":true}"#).unwrap();
+    std::fs::write(b.join(".gitrune/project-trust.json"), r#"{"trusted":true}"#).unwrap();
+    let recent = ide_workspace::RecentProjects::load(&config);
+    recent.touch(&a, None).unwrap();
+    let trust = TrustStore::load(&config, &data);
+    assert!(trust.trusted(&a).unwrap());
+    assert!(!trust.status(&b).unwrap().decided);
+    recent.touch(&b, None).unwrap();
+    let trust = TrustStore::load(&config, &data);
+    assert!(!trust.trusted(&b).unwrap(), "migration is not repeated");
+    trust.decide(&a, true, true).unwrap();
+    assert!(trust.trusted(&b).unwrap());
+    trust.decide(&b, false, false).unwrap();
+    assert!(!trust.trusted(&b).unwrap(), "revocation overrides a trusted location");
+    let trust = TrustStore::load(&config, &data);
+    assert!(!trust.trusted(&b).unwrap());
+    trust.remove_location(&dunce::canonicalize(a.parent().unwrap()).unwrap()).unwrap();
+    assert!(trust.trusted(&a).unwrap());
+    trust.decide(&a, false, false).unwrap();
+    assert!(!TrustStore::load(&config, &data).trusted(&a).unwrap());
+    std::fs::write(data.join("project-trust.json"), "broken").unwrap();
+    assert!(TrustStore::load(&config, &data).trusted(&a).is_err(), "corruption fails closed");
+}
+
+#[test]
+fn an_inherited_folder_is_trusted_for_this_process_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (config, data) = (tmp.path().join("config"), tmp.path().join("data"));
+    let root = tmp.path().join("workspaces/app");
+    std::fs::create_dir_all(&root).unwrap();
+    let trust = TrustStore::load(&config, &data);
+    assert!(!trust.trusted(&root).unwrap());
+    trust.inherit(&root).unwrap();
+    assert!(trust.trusted(&root).unwrap());
+    assert!(!trust.trusted(root.parent().unwrap()).unwrap(), "only that folder");
+    assert!(trust.status(&root).unwrap().decided, "the trust prompt doesn't ask again");
+    assert!(trust.decisions().unwrap().projects.is_empty(), "no decision is recorded");
+    assert!(!TrustStore::load(&config, &data).trusted(&root).unwrap(), "not persisted");
+    trust.decide(&root, false, false).unwrap();
+    assert!(!trust.trusted(&root).unwrap(), "a decision to restrict it still wins");
+}
+
+#[cfg(unix)]
+fn script(root: &Path, name: &str, marker: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let path = root.join(name);
+    std::fs::write(&path, format!("#!/bin/sh\nprintf executed > '{marker}'\n")).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn malicious_project_stays_editable_then_starts_in_place_after_trust() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(tmp.path()).unwrap().join("malicious");
+    std::fs::create_dir_all(root.join(".gitrune")).unwrap();
+    script(&root, "hook", "hook.marker");
+    std::fs::write(root.join("main.py"), "print('safe')\n").unwrap();
+    std::fs::write(root.join(".devcontainer.json"), r#"{"postStartCommand":["./hook"]}"#).unwrap();
+    let host = host(&tmp.path().join("app"), true);
+    let project = host.open_project("main", &root).unwrap();
+    assert!(!project.is_trusted());
+    let doc = ops::doc::open(&host, "main", root.join("main.py")).await.unwrap();
+    ops::doc::save(&host, "main", doc.id).await.unwrap();
+    for command in ["run_start", "debug_start", "terminal_start", "agent_prompt"] {
+        assert!(host.authorize_command("main", command).is_err(), "{command}");
+        assert!(host.authorize_command("missing-window", command).is_err(), "{command}");
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    for marker in ["hook.marker", "lsp.marker", "build.marker"] {
+        assert!(!root.join(marker).exists(), "{marker}");
+    }
+    host.set_project_trust(&root, true, false).await.unwrap();
+    assert!(Arc::ptr_eq(&project, &host.project("main").unwrap()));
+    assert_eq!(project.documents.snapshot(doc.id).unwrap().text, doc.text);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !root.join("hook.marker").exists() {
+        assert!(Instant::now() < deadline, "trusted hooks must run");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    host.set_project_trust(&root, false, false).await.unwrap();
+    assert!(!project.is_trusted());
+    ops::doc::save(&host, "main", doc.id).await.unwrap();
+    host.shutdown().await;
+}
+
+#[cfg(unix)]
+#[test]
+fn trusted_locations_use_canonical_directory_boundaries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("trusted/project");
+    let other = tmp.path().join("trusted-other/project");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(&other).unwrap();
+    std::os::unix::fs::symlink(other.parent().unwrap(), root.parent().unwrap().join("escape")).unwrap();
+    let trust = TrustStore::load(&tmp.path().join("config"), &tmp.path().join("data"));
+    trust.decide(&root, true, true).unwrap();
+    assert!(!trust.trusted(&other).unwrap());
+    let alias = root.parent().unwrap().join("escape/project");
+    assert!(!trust.trusted(&alias).unwrap());
+    assert_eq!(trust.status(&alias).unwrap().root.as_ref(), dunce::canonicalize(&other).unwrap());
+}
+
+#[test]
+fn add_location_trusts_every_project_under_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let location = tmp.path().join("projects");
+    let inside = location.join("nested/deep/app");
+    let outside = tmp.path().join("projects-other/app");
+    std::fs::create_dir_all(&inside).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let file = tmp.path().join("not-a-dir");
+    std::fs::write(&file, "x").unwrap();
+    let trust = TrustStore::load(&tmp.path().join("config"), &tmp.path().join("data"));
+    trust.add_location(&location).unwrap();
+    assert!(trust.trusted(&inside).unwrap());
+    assert!(!trust.trusted(&outside).unwrap());
+    assert_eq!(trust.decisions().unwrap().locations.len(), 1);
+    trust.add_location(&location).unwrap();
+    assert_eq!(trust.decisions().unwrap().locations.len(), 1, "re-adding is a no-op");
+    assert!(trust.add_location(&file).is_err(), "a file is not a location");
+    assert!(trust.add_location(&tmp.path().join("missing")).is_err(), "a missing path is not a location");
+    let reloaded = TrustStore::load(&tmp.path().join("config"), &tmp.path().join("data"));
+    assert!(reloaded.trusted(&inside).unwrap());
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn restricted_git_views_ignore_project_executables_and_mutations_cannot_run_hooks() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = dunce::canonicalize(tmp.path()).unwrap().join("project");
+    std::fs::create_dir_all(root.join(".gitrune")).unwrap();
+    let git = |args: &[&str]| {
+        let output = std::process::Command::new("git").current_dir(&root).args(args).output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.name", "Test"]);
+    git(&["config", "user.email", "test@example.com"]);
+    git(&["config", "commit.gpgsign", "false"]);
+    git(&["config", "core.hooksPath", ".git/hooks"]);
+    let file = root.join("safe.txt");
+    std::fs::write(&file, "safe\n").unwrap();
+    script(&root, ".git/hooks/pre-commit", "git-hook.marker");
+    let executable = root.join(".gitrune/git-witness");
+    std::fs::write(&executable, "#!/bin/sh\nprintf executed > git-executable.marker\nexec git \"$@\"\n").unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(
+        root.join(".gitrune/settings.toml"),
+        format!("[vcs.git]\nexecutable = {:?}\n", executable.to_str().unwrap()),
+    )
+    .unwrap();
+    let host = host(&tmp.path().join("app"), false);
+    let project = host.open_project("main", &root).unwrap();
+    // Repository discovery runs on its own thread when the project opens.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while project.repos().all().is_empty() {
+        assert!(Instant::now() < deadline, "the repository was never discovered");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(!project.with_repo(|repo| repo.status()).unwrap().is_empty());
+    assert!(ops::vcs::vcs_stage(&host, "main", vec![file.clone()]).await.is_err());
+    assert!(!root.join("git-hook.marker").exists());
+    assert!(!root.join("git-executable.marker").exists());
+    host.set_project_trust(&root, true, false).await.unwrap();
+    ops::vcs::vcs_stage(&host, "main", vec![file]).await.unwrap();
+    project.with_repo(|repo| repo.commit("trusted", false, false)).unwrap();
+    assert!(root.join("git-executable.marker").exists());
+    assert!(root.join("git-hook.marker").exists());
+    ide_vcs::set_git_executable(None);
+    host.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revocation_still_applies_when_a_project_folder_was_removed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    std::fs::create_dir(&root).unwrap();
+    let host = host(&tmp.path().join("app"), false);
+    host.trust.decide(&root, true, true).unwrap();
+    let project = host.open_project("main", &root).unwrap();
+    std::fs::remove_dir_all(&root).unwrap();
+    host.set_project_trust(&project.root, false, false).await.unwrap();
+    assert!(!project.is_trusted());
+    host.shutdown().await;
+}

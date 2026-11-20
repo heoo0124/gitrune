@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitRune</title>
+    <script src="/boot.js"></script>
+    <link rel="stylesheet" href="/splash.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="splash" class="splash" data-tauri-drag-region>
+      <img class="splash-logo" src="/splash-icon.png" alt="" />
+      <div class="splash-wordmark">GitRune</div>
+      <div class="splash-bar" role="progressbar" aria-label="Loading"><i></i></div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
