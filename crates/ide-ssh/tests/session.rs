@@ -6,7 +6,7 @@ use ide_core::remote_settings::SshAuth;
 use ide_ssh::{ConnectError, Output, Session, SshFiles, SshTarget, Tunnel};
 use parking_lot::Mutex;
 use russh::keys::{PrivateKey, PublicKey, decode_secret_key};
-use russh::server::{self, Auth, ChannelOpenHandle, Msg, Server as _, Session as ServerSession};
+use russh::server::{self, Auth, ChannelOpenHandle, Msg, Server as _, Session as ServerSession, VerifiedPublicKey};
 use russh::{Channel, ChannelId};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,8 +44,10 @@ impl server::Handler for Sshd {
         Ok(if user == "dev" && password == "secret" { Auth::Accept } else { Auth::reject() })
     }
 
-    async fn auth_publickey(&mut self, user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
-        Ok(if user == "dev" && key.key_data() == self.client_key.key_data() { Auth::Accept } else { Auth::reject() })
+    async fn auth_publickey(&mut self, user: &str, key: VerifiedPublicKey<'_>) -> Result<Auth, Self::Error> {
+        // ssh-key 0.7's PartialEq does not compare key material, so compare fingerprints.
+        let matches = key.public_key.fingerprint(Default::default()) == self.client_key.fingerprint(Default::default());
+        Ok(if user == "dev" && matches { Auth::Accept } else { Auth::reject() })
     }
 
     async fn channel_open_session(
