@@ -61,16 +61,17 @@ pub fn find_command(command: &str, search: &OsStr, root: &Path) -> Option<PathBu
 
 fn is_executable(path: &Path) -> bool {
     let Ok(metadata) = path.metadata() else { return false };
-    if !metadata.is_file() {
-        return false;
+    // Windows has no execute bit: a regular file is runnable if it has an extension
+    // the shell recognises, so the file check is the whole test there.
+    #[cfg(not(unix))]
+    {
+        metadata.is_file()
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
+        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
     }
-    #[cfg(not(unix))]
-    true
 }
 
 /// [`search_path`]'s directories, in order and once each. Only absolute ones: a
