@@ -49,9 +49,7 @@ describe("local font discovery", () => {
     expect(useSystemFontStore.getState()).toMatchObject({ status: "empty", source: "native" });
     expect(detect).not.toHaveBeenCalled();
     // Only the bundled families remain, sorted by name.
-    expect(useSystemFontStore.getState().fonts).toEqual(
-      [...bundledFonts].sort((a, b) => a.name.localeCompare(b.name)),
-    );
+    expect(useSystemFontStore.getState().fonts).toEqual([...bundledFonts].sort((a, b) => a.name.localeCompare(b.name)));
   });
   it("reports errors without losing suggestions, then retries", async () => {
     discover.mockResolvedValueOnce({ status: "error", error: { kind: "unavailable", message: "Unavailable" } });

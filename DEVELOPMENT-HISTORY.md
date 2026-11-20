@@ -12,13 +12,13 @@
 **GitRune 是把 OpenIDEA 的代码开发能力整体剥离后剩下的纯 Git 客户端。**
 真正难的不是删除，而是**判断哪些东西看起来独立、实际被依赖**。
 
-| 指标 | OpenIDEA | GitRune | 降幅 |
-|---|---|---|---|
-| Rust crate | 38 | **11** | −71% |
-| Rust 行数 | ~252,000 | **65,246** | −74% |
-| 前端 feature | 42 | **7** | −83% |
-| 前端 TS 行数 | ~380,000 | **164,063** | −57% |
-| 编译产物 | — | 36 MB `.app` | — |
+| 指标         | OpenIDEA | GitRune      | 降幅 |
+| ------------ | -------- | ------------ | ---- |
+| Rust crate   | 38       | **11**       | −71% |
+| Rust 行数    | ~252,000 | **65,246**   | −74% |
+| 前端 feature | 42       | **7**        | −83% |
+| 前端 TS 行数 | ~380,000 | **164,063**  | −57% |
+| 编译产物     | —        | 36 MB `.app` | —    |
 
 保留的核心：`ide-vcs` **15,611 行、238 个测试，一行未改**。
 
@@ -41,6 +41,7 @@
 **根因**：`cargo check` 默认**不编译测试代码**。
 
 **正确做法**：
+
 ```bash
 # 只 check 是不够的
 cargo check -p gitrune
@@ -73,9 +74,11 @@ cargo test -p <crate> --no-run
 而这个对话框已经不存在了。
 
 **规律**：
+
 > **前端是「入口」，后端是「门禁」。删掉入口，门禁还在，用户就被锁在门外。**
 
 删除任何功能前，必须用后端符号反查：
+
 ```bash
 # 删 feature 之前，先查后端是否还在校验它
 grep -rn "require_trust\|requireLicense\|requireAuth" crates/ --include=*.rs
@@ -91,6 +94,7 @@ grep -rn "require_trust\|requireLicense\|requireAuth" crates/ --include=*.rs
 必须重开项目才能看到。
 
 `vcs_path_changed` 这个函数还在，但**没有调用者**了——这是最典型的信号：
+
 > **一个函数只被测试引用，说明产品代码把它忘了。**
 
 **发现方式**：`crates/ide-host/tests/vcs_worktrees.rs` 的
@@ -109,6 +113,7 @@ grep -rn "require_trust\|requireLicense\|requireAuth" crates/ --include=*.rs
 `crates/ide-vcs` 是 Git 引擎：`gix` 读，`git` 子进程写。**15,611 行，238 个测试。**
 
 删减全程没有碰它，原因：
+
 - 它是这个项目为什么存在的理由
 - 它有完整的测试保护（这是敢动其他一切的底气）
 - 它**不依赖任何被删的 crate**
@@ -124,16 +129,17 @@ grep -rn "require_trust\|requireLicense\|requireAuth" crates/ --include=*.rs
 
 `ide-ssh` 里有三块东西，长得像「远程开发」：
 
-| 文件 | 行数 | 真实作用 |
-|---|---|---|
-| `git_creds.rs` | — | Git HTTPS 凭证 |
-| `askpass.rs` | — | `git` 的密码提示路由 |
-| `secrets.rs` | — | 系统钥匙串读写 |
+| 文件           | 行数 | 真实作用             |
+| -------------- | ---- | -------------------- |
+| `git_creds.rs` | —    | Git HTTPS 凭证       |
+| `askpass.rs`   | —    | `git` 的密码提示路由 |
+| `secrets.rs`   | —    | 系统钥匙串读写       |
 
 **合计 1,196 行。** 如果把整个 crate 当成「远程开发」删掉，
 **clone / pull / push 的 HTTPS 认证全部失效**。
 
 **教训**：
+
 > 不要按「模块名字」判断去留，要按「调用链」判断。
 
 **这条已写入 `gitrune/AGENTS.md` 作为不可回退的规则。**
@@ -147,6 +153,7 @@ grep -rn "require_trust\|requireLicense\|requireAuth" crates/ --include=*.rs
 **处理方式**：不是重写，而是**把它移到 `ide-core`**（更低层的公共 crate）。
 
 **规律**：
+
 > 删除一个 crate 时，先看它里面有没有「不属于它」的公共类型。
 > 有的话，**下沉到公共层**，而不是跟着一起删。
 
@@ -161,11 +168,11 @@ grep -rn "require_trust\|requireLicense\|requireAuth" crates/ --include=*.rs
 
 **没有**去改这些调用点（太多），而是新建：
 
-| 文件 | 作用 |
-|---|---|
-| `lspShims.ts` | 语言服务器相关调用的 no-op |
+| 文件                | 作用                         |
+| ------------------- | ---------------------------- |
+| `lspShims.ts`       | 语言服务器相关调用的 no-op   |
 | `structureShims.ts` | tree-sitter 结构分析的空实现 |
-| `syntaxShims.ts` | 语法高亮的空 Extension |
+| `syntaxShims.ts`    | 语法高亮的空 Extension       |
 
 ```ts
 // syntaxShims.ts —— 语法高亮直接返回空，编辑器不报错
@@ -233,10 +240,12 @@ x.foo();              // TS2722: 可能为 undefined
 **`dev-status.ts` 按字符串匹配，所以永远找不到。**
 
 **规律**：
+
 > 改名时，**运行时拼接的字符串**（不是常量）最容易漏。
 > 编译器检查不到它们。
 
 排查命令：
+
 ```bash
 grep -rn "ai\.l0ng\|openidea\.dev\|openidea\." --include=*.ts --include=*.rs .
 ```
@@ -257,11 +266,13 @@ grep -rn "ai\.l0ng\|openidea\.dev\|openidea\." --include=*.ts --include=*.rs .
    - 所以**不是能力问题，是选择顺序问题**
 
 **根因**：`ToolWindowView` 的聚焦逻辑是：
+
 ```ts
 // 优先 [data-autofocus]，否则选第一个「非按钮、非链接」的可聚焦元素
 ```
 
 Commit 面板有 15 个可聚焦元素：
+
 - 前 8 个是工具栏按钮（被排除）
 - **第 9 个是面板分隔条的 DIV**（被选中了）
 - textarea 排在第 11 位，永远轮不到
@@ -269,6 +280,7 @@ Commit 面板有 15 个可聚焦元素：
 **修复**：给 textarea 加 `data-autofocus`。
 
 **教训**：
+
 > **「能力正常但行为不对」时，去查选择顺序，而不是查能力。**
 
 ---
@@ -288,6 +300,7 @@ Commit 面板有 15 个可聚焦元素：
 ### 坑 1：自动更新指向了上游
 
 `tauri.conf.json` 里的 updater 端点是：
+
 ```json
 "endpoints": ["https://github.com/l0ng-ai/openidea/releases/latest/download/latest.json"]
 ```
@@ -311,6 +324,7 @@ npx tauri signer generate -w .keys/gitrune.key
 ```
 
 **规律**：
+
 > 消除一个报错时，先确认你消除的是「症状」还是「原因」。
 > 我删 pubkey 消除的是症状，代价是应用启动不了。
 
@@ -319,6 +333,7 @@ npx tauri signer generate -w .keys/gitrune.key
 ### 坑 2：CLI 启动器指向不存在的文件
 
 bundle 里有 `Contents/Resources/bin/openidea`：
+
 ```sh
 exec "$contents/MacOS/openidea" --cli "$@"    # ← 实际文件叫 gitrune
 ```
@@ -326,6 +341,7 @@ exec "$contents/MacOS/openidea" --cli "$@"    # ← 实际文件叫 gitrune
 **后果**：菜单里「Install Command」装出来的命令**永远无法运行**。
 
 需要全链路改名：
+
 - `tauri.macos.conf.json` 的 bundle files
 - `ide-cli/src/install.rs` 的 `LAUNCHER` 常量
 - socket 名（`openidea-{:016x}`）
@@ -343,11 +359,13 @@ Sealed Resources=none          ← 没有封装 icon.icns
 ```
 
 Gatekeeper 报错：
+
 ```
 code has no resources but signature indicates they must be present
 ```
 
 **修复**：打包后手动完整签名。
+
 ```bash
 codesign --force --deep --sign - GitRune.app
 # 验证
@@ -355,6 +373,7 @@ codesign --verify --deep --strict GitRune.app
 ```
 
 签名后应该是：
+
 ```
 Sealed Resources version=2 rules=13 files=2
 valid on disk
@@ -384,15 +403,16 @@ startup: first IPC 2822 ms after process start
   webview           2216 ms     ← 78% 花在 WebView
 ```
 
-| 阶段 | 耗时 | 占比 |
-|---|---|---|
-| Rust `main` | 22 ms | 0.8% |
-| 后端 setup 完成 | 606 ms | 21% |
+| 阶段                | 耗时          | 占比    |
+| ------------------- | ------------- | ------- |
+| Rust `main`         | 22 ms         | 0.8%    |
+| 后端 setup 完成     | 606 ms        | 21%     |
 | **WebView + React** | **~2,216 ms** | **78%** |
 
 **结论**：**后端不是瓶颈，WebView 才是。** Rune 恰好能解决这个（它没有 WebView）。
 
 **但代价必须说清**：
+
 - 前端 164,063 行全部作废
 - 164k 行里的坑（Cmd+K 焦点、worktree 重扫、10k 行虚拟滚动）要重踩
 - **Rune 没有语法高亮**（`rune-light` 是光照渲染，不是 highlighting）
@@ -400,6 +420,7 @@ startup: first IPC 2822 ms after process start
 - Rune 是 **pre-release**，pin rev 使用
 
 **唯一真正对口的组件**：`rune-kit::diff`（3,272 行）
+
 - 支持**行级注释**（`Annotation` + `on_comment`）—— 这是 GitRune 目前没有的（PR review 需要）
 - `myers.rs` + `model.rs` 是纯逻辑，**不依赖 Rune 渲染**，可以移植
 
@@ -444,14 +465,14 @@ npx playwright test e2e/  # 104 passed (1 flaky 可接受)
 
 ## 8. 踩过的工具坑
 
-| 坑 | 现象 | 解决 |
-|---|---|---|
-| `ron v0.12.3` 下载失败 | 代理可达但 crates.io 不通 | 根因是 `keyring-core/sample` feature，改用 `mock::Store` |
-| Playwright 缺浏览器 | 8 个 e2e 假失败 | `npx playwright install chromium` |
-| GUI 命令挂死 | 启动 GUI 后忘了 `&`，前台等待 20 分钟 | **长驻进程必须 `run_in_background: true`** |
-| SVG 注释里的 `--` | 浏览器显示错误页 | XML 注释不能含 `--`（`git log --graph` 踩过） |
-| `pnpm test -- <path>` | 忽略过滤，跑全量（几分钟） | 用 `pnpm vitest run <path>` |
-| lint-staged 阻断提交 | unused imports 导致 commit 失败 | 提交前先跑 oxlint |
+| 坑                     | 现象                                  | 解决                                                     |
+| ---------------------- | ------------------------------------- | -------------------------------------------------------- |
+| `ron v0.12.3` 下载失败 | 代理可达但 crates.io 不通             | 根因是 `keyring-core/sample` feature，改用 `mock::Store` |
+| Playwright 缺浏览器    | 8 个 e2e 假失败                       | `npx playwright install chromium`                        |
+| GUI 命令挂死           | 启动 GUI 后忘了 `&`，前台等待 20 分钟 | **长驻进程必须 `run_in_background: true`**               |
+| SVG 注释里的 `--`      | 浏览器显示错误页                      | XML 注释不能含 `--`（`git log --graph` 踩过）            |
+| `pnpm test -- <path>`  | 忽略过滤，跑全量（几分钟）            | 用 `pnpm vitest run <path>`                              |
+| lint-staged 阻断提交   | unused imports 导致 commit 失败       | 提交前先跑 oxlint                                        |
 
 ---
 
@@ -460,11 +481,13 @@ npx playwright test e2e/  # 104 passed (1 flaky 可接受)
 ### 顺序应该反过来
 
 **错误顺序**（实际走的）：
+
 ```
 删后端 → 删前端 → 修类型错误 → 跑测试 → 发现测试从没编译
 ```
 
 **正确顺序**：
+
 ```
 1. 先跑一次完整测试，建立基线（cargo test --all-targets）
 2. 删一个模块
@@ -510,19 +533,19 @@ grep -rn "require_\|authorize" crates/ide-host/src/ops/ --include=*.rs
 
 ### 保留的 11 个 crate
 
-| crate | 作用 | 改动 |
-|---|---|---|
-| `ide-vcs` | **Git 引擎** | **零改动，238 测试** |
-| `ide-github` | PR（走 `gh` CLI） | 无 |
-| `ide-host` | 项目/窗口/ops | 重写 `Project`、`Host` |
-| `ide-workspace` | 设置、文档、本地历史 | 无 |
-| `ide-vfs` | 文件系统 | 无 |
-| `ide-ssh` | **Git HTTPS 凭证链** | 不可删 |
-| `ide-core` | 公共类型 | 接收 `VirtualDocument` |
-| `ide-cli` | CLI 启动器 | 改名 |
-| `ide-text` | 文本坐标 | 无 |
-| `ide-fonts` | 字体 | 无 |
-| `ide-clipboard` | 剪贴板 | 无 |
+| crate           | 作用                 | 改动                   |
+| --------------- | -------------------- | ---------------------- |
+| `ide-vcs`       | **Git 引擎**         | **零改动，238 测试**   |
+| `ide-github`    | PR（走 `gh` CLI）    | 无                     |
+| `ide-host`      | 项目/窗口/ops        | 重写 `Project`、`Host` |
+| `ide-workspace` | 设置、文档、本地历史 | 无                     |
+| `ide-vfs`       | 文件系统             | 无                     |
+| `ide-ssh`       | **Git HTTPS 凭证链** | 不可删                 |
+| `ide-core`      | 公共类型             | 接收 `VirtualDocument` |
+| `ide-cli`       | CLI 启动器           | 改名                   |
+| `ide-text`      | 文本坐标             | 无                     |
+| `ide-fonts`     | 字体                 | 无                     |
+| `ide-clipboard` | 剪贴板               | 无                     |
 
 ### 保留的 7 个 feature
 
@@ -542,14 +565,14 @@ app  github  project-tree  project-trust  settings  vcs  welcome
 
 ## 11. 未完成/未验证
 
-| 项 | 状态 |
-|---|---|
-| GitHub PR 面板 | **未实测**（需 `gh` 登录） |
-| 真实 Tauri 运行时 Git 操作 | 部分验证（changelist 写入成功） |
-| 辅助窗口（比较/设置） | 未测 |
-| macOS 原生窗口行为 | 未测 |
-| `textCatalog.test.ts` | 9 个测试失败（词条残留已删功能的文案） |
-| 启动耗时 | 2.8s，**78% 在 WebView**（Rune 可解，但代价大） |
+| 项                         | 状态                                            |
+| -------------------------- | ----------------------------------------------- |
+| GitHub PR 面板             | **未实测**（需 `gh` 登录）                      |
+| 真实 Tauri 运行时 Git 操作 | 部分验证（changelist 写入成功）                 |
+| 辅助窗口（比较/设置）      | 未测                                            |
+| macOS 原生窗口行为         | 未测                                            |
+| `textCatalog.test.ts`      | 9 个测试失败（词条残留已删功能的文案）          |
+| 启动耗时                   | 2.8s，**78% 在 WebView**（Rune 可解，但代价大） |
 
 ---
 
@@ -558,11 +581,13 @@ app  github  project-tree  project-trust  settings  vcs  welcome
 本文从 29 个提交的提交信息、真实 bug 排查过程、实测数据中提炼。
 
 **Git 历史已被重置**，所以本文是：
+
 - 唯一的开发过程记录
 - 决策依据的存档
 - 下次重来的检查清单
 
 **写作原则**：
+
 1. 只写**验证过**的事实（带路径、数字）
 2. 明确区分「判断」和「实测」
 3. **记录错误判断**，不只是成功（比如「删 pubkey 消除签名报错」的教训）

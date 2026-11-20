@@ -103,7 +103,6 @@ describe("openProjectInWindow", () => {
     expect(openProject).toHaveBeenCalledWith("/p/a");
   });
 
-
   it("asks for a new window when this one already has a project", async () => {
     useProject.setState(projectState("/p/b") as never);
     windowOpenProject.mockResolvedValue(ok({ kind: "opened", label: "project-1" }));

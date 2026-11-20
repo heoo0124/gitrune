@@ -117,9 +117,7 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               className={styles.link}
-              onClick={() =>
-                void openExternalUrl("https://github.com/heoo0124/gitrune/issues/new").catch(() => {})
-              }
+              onClick={() => void openExternalUrl("https://github.com/heoo0124/gitrune/issues/new").catch(() => {})}
             >
               {t("app.about.reportIssue")}
             </button>

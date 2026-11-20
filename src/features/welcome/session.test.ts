@@ -82,7 +82,6 @@ describe("reopenLastProject", () => {
     expect(openProject).toHaveBeenCalledWith("/p/last");
   });
 
-
   it("clears the remembered project while reopening and lets the user cancel", async () => {
     let resolveOpen!: () => void;
     openProject.mockImplementation(

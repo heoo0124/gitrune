@@ -34,7 +34,6 @@ beforeEach(() => {
 });
 
 describe("openRecent", () => {
-
   it("still opens a plain local recent locally", async () => {
     await openRecent({ path: "/p/local", name: "local" });
     expect(openProject).toHaveBeenCalledWith("/p/local");
