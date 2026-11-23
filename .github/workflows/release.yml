@@ -72,12 +72,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Builds the frontend, the bundles, and on macOS signs the .app and rebuilds
-      # the .dmg around it: tauri's own pass leaves the linker signature, which
-      # seals no resources and Gatekeeper rejects.
+      # Tauri signs the bundle itself when APPLE_SIGNING_IDENTITY is set, and that
+      # covers Info.plist and Resources — the step that the linker signature alone
+      # misses. No post-processing step is needed.
       - name: Build
-        shell: bash
-        run: scripts/bundle-release.sh --target ${{ matrix.target }}
+        run: pnpm exec tauri build --target ${{ matrix.target }}
         env:
           # Ad-hoc unless the repository supplies a real certificate.
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
