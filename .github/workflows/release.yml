@@ -17,8 +17,10 @@ permissions:
   contents: write
 
 concurrency:
+  # A re-pushed tag starts a new run for the same ref. The newest run wins: without
+  # cancel-in-progress the previous one sits in the queue and blocks it.
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
