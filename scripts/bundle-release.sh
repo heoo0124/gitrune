@@ -24,14 +24,14 @@ if [ -n "$TARGET" ]; then BUNDLE_ROOT="target/$TARGET/release/bundle"; else BUND
 
 # Only macOS has a bundle signature to repair.
 if [ "$(uname -s)" = "Darwin" ]; then
-  scripts/sign-macos.sh
+  APP="$BUNDLE_ROOT/macos/GitRune.app"
+  scripts/sign-macos.sh "$APP"
 
   case "$TARGET_ARG" in
     *x86_64-apple-darwin*) TRIPLE="x64" ;;
     *) TRIPLE="aarch64" ;;
   esac
   VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-  APP="$BUNDLE_ROOT/macos/GitRune.app"
   DMG="$BUNDLE_ROOT/dmg/GitRune_${VERSION}_${TRIPLE}.dmg"
 
   echo "repackaging $DMG with the signed app"
@@ -39,6 +39,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   trap 'rm -rf "$STAGE"' EXIT
   cp -R "$APP" "$STAGE/"
   ln -s /Applications "$STAGE/Applications"
+  mkdir -p "$(dirname "$DMG")"
   rm -f "$DMG"
   hdiutil create -volname "GitRune" -srcfolder "$STAGE" -ov -format UDZO "$DMG" > /dev/null
   echo "bundled $(du -h "$DMG" | cut -f1)  $DMG"
