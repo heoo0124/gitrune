@@ -75,7 +75,8 @@ Download a bundle from [Releases](https://github.com/heoo0124/gitrune/releases):
 | Windows               | `GitRune_<version>_x64-setup.exe` or `.msi` |
 | Linux                 | `.deb`, `.rpm`, or `.AppImage`              |
 
-**macOS:** the app is ad-hoc signed rather than notarised — there is no Apple
+**macOS:** Apple silicon only — Intel Macs can run the arm64 build through
+Rosetta 2. The app is ad-hoc signed rather than notarised — there is no Apple
 developer certificate behind this project — so the first launch is blocked:
 System Settings → Privacy & Security → **Open Anyway**, or
 
