@@ -47,7 +47,8 @@ test("Close Project shows the Welcome screen; a recent project opens from it onc
 
   // Search Everywhere is gone with the search feature; run the action directly.
   await page.evaluate(async () => {
-    const { executeAction } = await import(/* @vite-ignore */ "/src/platform/actions.ts");
+    const actionsModule = "/src/platform/actions.ts";
+    const { executeAction } = await import(/* @vite-ignore */ actionsModule);
     await executeAction("file.closeProject");
   });
 

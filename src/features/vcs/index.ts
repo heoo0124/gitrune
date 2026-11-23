@@ -242,6 +242,12 @@ export function activate(): () => void {
     trackMergeRebaseItem(),
     installHunkPopup(),
     registerOverlay({ id: "vcs.dialogs", component: VcsDialogHost }),
+    // The bookmark chooser and list: GitLog only writes their state, so without this
+    // overlay nothing renders after "Add Bookmark…".
+    registerOverlay({
+      id: "vcs.bookmarks",
+      component: lazyComponent(() => import("./bookmarks/BookmarkPopups").then((m) => m.BookmarkPopupsOverlay)),
+    }),
     activateConflictBanner(),
     activateConflictMarkers(),
     trackCommitWindow(),
