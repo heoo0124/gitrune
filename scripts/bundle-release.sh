@@ -10,11 +10,17 @@
 set -eu
 
 TARGET_ARG=""
+TARGET=""
 if [ "${1:-}" = "--target" ] && [ -n "${2:-}" ]; then
-  TARGET_ARG="--target $2"
+  TARGET="$2"
+  TARGET_ARG="--target $TARGET"
 fi
 
 pnpm exec tauri build $TARGET_ARG
+
+# cargo puts a cross target's artifacts under target/<triple>/release, and the
+# bundles follow the same root.
+if [ -n "$TARGET" ]; then BUNDLE_ROOT="target/$TARGET/release/bundle"; else BUNDLE_ROOT="target/release/bundle"; fi
 
 # Only macOS has a bundle signature to repair.
 if [ "$(uname -s)" = "Darwin" ]; then
@@ -25,8 +31,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
     *) TRIPLE="aarch64" ;;
   esac
   VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-  APP="target/release/bundle/macos/GitRune.app"
-  DMG="target/release/bundle/dmg/GitRune_${VERSION}_${TRIPLE}.dmg"
+  APP="$BUNDLE_ROOT/macos/GitRune.app"
+  DMG="$BUNDLE_ROOT/dmg/GitRune_${VERSION}_${TRIPLE}.dmg"
 
   echo "repackaging $DMG with the signed app"
   STAGE=$(mktemp -d)
