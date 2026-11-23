@@ -9,6 +9,9 @@
 # Usage: scripts/sign-macos.sh [path/to/GitRune.app]   (defaults to the release bundle)
 set -eu
 
+# Resolve against the repository root so a caller's cwd does not decide the path.
+cd "$(dirname "$0")/.."
+
 APP=${1:-target/release/bundle/macos/GitRune.app}
 
 [ -d "$APP" ] || { echo "no bundle at $APP" >&2; exit 1; }

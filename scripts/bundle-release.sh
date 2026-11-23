@@ -9,6 +9,10 @@
 # Usage: scripts/bundle-release.sh [--target <triple>]
 set -eu
 
+# Everything below resolves against the repository root, whichever directory the
+# workflow step starts from.
+cd "$(dirname "$0")/.."
+
 TARGET_ARG=""
 TARGET=""
 if [ "${1:-}" = "--target" ] && [ -n "${2:-}" ]; then
